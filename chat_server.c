@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
 
 /* Chat system server */
 int main(int argc, char *argv[])
@@ -7,6 +8,29 @@ int main(int argc, char *argv[])
     printf("\nWelcome to the OS Chat Server");
     printf("\nType '.exit' to exit.");
     // Create threads waiting for clients to connect
+
+    pthread_t threads[5];
+
+    char input[20];
+    char word[] = ".exit";
+    char *result;
+
+    // Using strstr() to find the word
+    pthread_create(&threads[0], NULL, receive_msg, NULL);
+    pthread_join(threads[0], NULL);
+
+    while (1) // While true
+    {
+        // Wait for a client to connect and receive a message
+        //
+        fgets(input, 20, stdin);
+        result = strstr(input, word);
+        if (result != NULL)
+        {
+            printf("Exiting...");
+            return 0;
+        }
+    }
 
     // TODO Dynamic memory test, for messages
     // This pointer will hold the
@@ -47,7 +71,7 @@ int main(int argc, char *argv[])
             printf("%d, ", ptr[i]);
         }
     }
-    
+
     // free the allocated memory
     free(ptr);
     printf("\nAllocated memory successfully freed");
@@ -56,4 +80,9 @@ int main(int argc, char *argv[])
     ptr = NULL;
 
     return 0;
+}
+
+void *receive_msg(void *threadarg) {
+
+    pthread_exit(NULL);
 }
