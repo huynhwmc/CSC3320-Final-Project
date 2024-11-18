@@ -4,28 +4,23 @@
 #include <string.h>
 #include <sys/wait.h>
 
+#define MAX_LIMIT 200
+
 /* Chat client */
 int main(int argc, char *argv[])
 {
     char **strings = NULL; // Holds the message in dynamic memory
     int i = 0;
-    char str[200], ch;
-
-    // User enters a message
-    printf("\nEnter a message: ");
-
-    printf("\n Enter Your message (press @ to terminate) \n");
-    while ((ch = fgetc(stdin)) != '@')
-    {
-        str[i++] = ch;
-    }
-    str[i] = '\0';
-
-    int shmid;
+    char str[MAX_LIMIT], ch;
+    int shmid; // Shared memory's ID
     void *shared_memory;
     char buff[100];
 
-    // Create shared memory
+    // User enters a message
+    printf("\nEnter a message: ");
+    fgets(str, MAX_LIMIT, stdin);
+
+        // Create shared memory
     shmid = shmget((key_t)2345, 1024, 0666 | IPC_CREAT);
     if (shmid == -1)
     {
