@@ -17,7 +17,7 @@ void *receive_msg(void *threadarg) {
 int main(int argc, char *argv[])
 {
     printf("\nWelcome to the OS Chat Server");
-    
+
     // Create threads waiting for clients to connect
     pthread_t serverThread;
     // Create the mutex
@@ -28,27 +28,29 @@ int main(int argc, char *argv[])
     char input[20];
     char word[] = ".exit";
     char *result;
-    
+
     // Start receiving messages from clients
     pthread_create(&serverThread, NULL, receive_msg, NULL);
     pthread_join(serverThread, NULL);
-    
+
     // Server CLI
     printf("\nNow waiting for messages.");
     printf("\nType '.exit' to exit.\n");
-    
+
     while (1) // While true, waiting for the "exit" message
     {
-        fgets(input, 20, stdin);
-        // Using strstr() to find the word
-        result = strstr(input, word);
-        if (result != NULL)
+        fgets(input, sizeof(input), stdin);
+        // Remove the newline character if present from fgets
+        input[strcspn(input, "\n")] = '\0';
+
+        // Compare input with ".exit"
+        if (strcmp(input, word) == 0)
         {
             printf("\nExiting...\n");
             break; // Terminate from the infinite loop and execute the code below
         }
     }
-    
+
     pthread_mutex_destroy(&mutex);
     pthread_cond_destroy(&full);
     pthread_cond_destroy(&empty);
