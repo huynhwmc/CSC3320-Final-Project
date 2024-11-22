@@ -22,28 +22,30 @@ int main(int argc, char *argv[])
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&full, NULL);
     pthread_cond_init(&empty, NULL);
-    
-    // User enters a message
-    printf("\nEnter a message: ");
-    fgets(str, MAX_LIMIT, stdin);
-    
-    // Allocate dynamic memory for the message
-    // TODO: Create dynamic memory for the message using malloc()
-    
+
     // Create shared memory
-    shmid = shmget((key_t)2345, 1024, 0666 | IPC_CREAT);
+    // Generate unique key
+    key_t key = ftok("shmfile", 65);
+    shmid = shmget(key, 1024, 0666 | IPC_CREAT);
     if (shmid == -1)
     {
         perror("shmget");
         return 1;
     }
-    
+
     shared_memory = shmat(shmid, NULL, 0);
     if (shared_memory == (void *)-1)
     {
         perror("shmat");
         return 1;
     }
+
+    // User enters a message
+    printf("\nEnter a message: ");
+    fgets(str, MAX_LIMIT, stdin);
+    
+    // Allocate dynamic memory for the message
+    // TODO: Create dynamic memory for the message using malloc()
     
     
     // Connect to the chat server using shared memory

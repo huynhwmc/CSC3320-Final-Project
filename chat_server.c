@@ -8,14 +8,16 @@
 pthread_mutex_t mutex;
 pthread_cond_t full;
 pthread_cond_t empty;
-char message[200];
+char str[200];
 int shmid; // Shared memory's ID
 void *shared_memory;
 char buff[100];
 
 void *receive_msg(void *threadarg) {
     // TODO: Access shared memory and read the message
-    
+    char *str = (char *)shmat(shmid, (void *)0, 0);
+    shmdt(str); 
+
     pthread_exit(NULL);
 }
 
@@ -36,8 +38,12 @@ int main(int argc, char *argv[])
     char *result;
 
     // Start receiving messages from clients
+
+    // Generate unique key
+    key_t key = ftok("shmfile", 65);
+
     // Create shared memory
-        shmid = shmget((key_t)2345, 1024, 0666 | IPC_CREAT);
+        shmid = shmget(key, 1024, 0666 | IPC_CREAT);
         if (shmid == -1)
         {
             perror("shmget");
@@ -70,6 +76,9 @@ int main(int argc, char *argv[])
             break; // Terminate from the infinite loop and execute the code below
         }
     }
+
+    // destroy shared memory
+    shmctl(shmid, IPC_RMID, NULL);
 
     pthread_mutex_destroy(&mutex);
     pthread_cond_destroy(&full);
