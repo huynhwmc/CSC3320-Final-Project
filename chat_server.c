@@ -15,8 +15,17 @@ char buff[100];
 
 void *receive_msg(void *threadarg) {
     // TODO: Access shared memory and read the message
-    char *str = (char *)shmat(shmid, (void *)0, 0);
-    shmdt(str); 
+    //char *str = (char *)shmat(shmid, (void *)0, 0);
+    //shmdt(str); 
+    pthread_mutex_lock(&mutex);
+    char *msg = (char *)shared_memory; // Read from shared memory
+    printf("Message received from client: %s\n", msg);
+    pthread_mutex_unlock(&mutex);
+
+    // Send a reply back
+    pthread_mutex_lock(&mutex);
+    strcpy((char *)shared_memory, "Message received by server!");
+    pthread_mutex_unlock(&mutex);
 
     pthread_exit(NULL);
 }

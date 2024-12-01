@@ -50,6 +50,20 @@ int main(int argc, char *argv[])
     
     // Connect to the chat server using shared memory
     // TODO: Connect to the chat server using shared memory
+    // Allocate dynamic memory for the message
+    strings = (char **)malloc(sizeof(char *) * 1);
+    strings[0] = (char *)malloc(strlen(str) + 1);
+    strcpy(strings[0], str);
+
+    // Write to shared memory
+    pthread_mutex_lock(&mutex);
+    strcpy((char *)shared_memory, strings[0]); 
+    pthread_mutex_unlock(&mutex);
+
+    // Free allocated memory
+    free(strings[0]);
+    free(strings);
+
     
     // Use mutexes to ensure no other process is accessing or updating that memory
     
