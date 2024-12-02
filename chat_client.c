@@ -43,7 +43,8 @@ int main(int argc, char *argv[])
     // User enters a message
     printf("\nEnter a message: ");
     fgets(str, MAX_LIMIT, stdin);
-    
+    str[strcspn(str, "\n")] = '\0'; // Remove newline character
+
     // Allocate dynamic memory for the message
     // TODO: Create dynamic memory for the message using malloc()
     
@@ -57,7 +58,16 @@ int main(int argc, char *argv[])
 
     // Write to shared memory
     pthread_mutex_lock(&mutex);
-    strcpy((char *)shared_memory, strings[0]); 
+    strcpy((char *)shared_memory, strings[0]);
+
+    // Signal the server that a message is available
+    pthread_cond_signal(&full);
+
+    // Wait for the server's acknowledgment
+    pthread_cond_wait(&empty, &mutex);
+
+    // Read acknowledgment
+    printf("Server acknowledgment: %s\n", (char *)shared_memory);
     pthread_mutex_unlock(&mutex);
 
     // Free allocated memory
