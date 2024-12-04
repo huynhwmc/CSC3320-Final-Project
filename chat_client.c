@@ -11,6 +11,11 @@ pthread_mutex_t mutex;
 pthread_cond_t full;
 pthread_cond_t empty;
 
+typedef struct {
+    pid_t client_pid;         // Client Process ID
+    char message[SHM_SIZE];   // Message content
+} SharedMemory;
+
 /* Chat client */
 int main(int argc, char *argv[])
 {
