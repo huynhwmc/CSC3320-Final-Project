@@ -28,7 +28,7 @@ typedef struct
 
 int shmid; // Shared memory's ID
 void *shared_memory;
-bool has_new_message = false; // Indicates new message in shared memory
+//bool has_new_message = false; // Indicates new message in shared memory
 
 /* Access shared memory and read a message */
 void *receive_msg(void *threadarg) {
