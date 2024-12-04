@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #define SHM_SIZE 1024
 #define MAX_LIMIT 200 // Maximum buffer/character limit for messages
