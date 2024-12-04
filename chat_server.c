@@ -9,10 +9,14 @@
 #include <stdbool.h> // for boolean values
 
 #define SHM_SIZE 1024
+#define RESPONSE_TIMEOUT 5 //timeout in seconds for server
 
 pthread_mutex_t mutex;
 pthread_cond_t full;
 pthread_cond_t empty;
+int shmid;
+void *shared_memory;
+bool has_new_message = false;
 
 /* Add custom data to shared memory. */
 typedef struct
@@ -28,6 +32,7 @@ bool has_new_message = false; // Indicates new message in shared memory
 
 /* Access shared memory and read a message */
 void *receive_msg(void *threadarg) {
+    char server_response[SHM_SIZE];
     while (true) {
         pthread_mutex_lock(&mutex);
 
@@ -39,7 +44,19 @@ void *receive_msg(void *threadarg) {
         char *msg = (char *)shared_memory; // Read from shared memory
  
         printf("New message from client: %s\n", msg);
+        printf("Reply to client? (y/n): ");
+        char choice;
+        fgets(server_response, sizeof(server_response), stdin);
+        choice = server_response[0];
 
+        if (choice == 'y' || choice == 'Y') {
+            snprintf(server_response, SHM_SIZE, "Server Response: Hello, %s", msg);
+            strncpy((char *)shared_memory, server_response, SHM_SIZE);
+            printf("Sent response: %s\n", server_response);
+            pthread_cond_signal(&empty);
+        } else {
+            printf("No response sent.\n");
+        }
         // Clear the shared memory
         memset(shared_memory, 0, SHM_SIZE);
         has_new_message = false;
