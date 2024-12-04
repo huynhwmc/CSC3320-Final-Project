@@ -4,6 +4,7 @@
 #include <sys/shm.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <stdbool.h> // for boolean values
 
@@ -12,6 +13,15 @@
 pthread_mutex_t mutex;
 pthread_cond_t full;
 pthread_cond_t empty;
+
+/* Add custom data to shared memory. */
+typedef struct
+{
+    int flag;                    // 0 = empty, 1 = client message, 2 = server response
+    pid_t client_pid;            // Client's process ID
+    char message[SHM_SIZE - 12]; // Message content
+} shared_data_t;
+
 int shmid; // Shared memory's ID
 void *shared_memory;
 bool has_new_message = false; // Indicates new message in shared memory
@@ -28,7 +38,7 @@ void *receive_msg(void *threadarg) {
         }
         char *msg = (char *)shared_memory; // Read from shared memory
  
-        printf("Message received from client: %s\n", msg);
+        printf("New message from client: %s\n", msg);
 
         // Clear the shared memory
         memset(shared_memory, 0, SHM_SIZE);
@@ -84,19 +94,19 @@ int main(int argc, char *argv[])
     shmid = shmget(key, 1024, 0666 | IPC_CREAT);
     if (shmid == -1)
     {
-        perror("shmget");
+        perror("Shared memory error: shmget");
         return 1;
     }
     
     shared_memory = shmat(shmid, NULL, 0);
     if (shared_memory == (void *)-1)
     {
-        perror("shmat");
+        perror("Shared memory error: shmat");
         return 1;
     }
 
     // Clear shared memory initially
-    // memset(shared_memory, 0, SHM_SIZE);
+    memset(shared_memory, 0, SHM_SIZE);
 
     // Create threads waiting for clients to connect
     pthread_t server_thread, monitor_thread;

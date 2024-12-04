@@ -3,13 +3,22 @@
 #include <sys/shm.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 #include <pthread.h>
 
 #define SHM_SIZE 1024
 #define MAX_LIMIT 200 // Maximum buffer/character limit for messages
-pthread_mutex_t mutex;
+pthread_mutex_t mutex;  
 pthread_cond_t full;
 pthread_cond_t empty;
+
+/* Add custom data to shared memory. */
+typedef struct
+{
+    int flag;                    // 0 = empty, 1 = client message, 2 = server response
+    pid_t client_pid;            // Client's process ID
+    char message[SHM_SIZE - 12]; // Message content
+} shared_data_t;
 
 /* Chat client */
 int main(int argc, char *argv[])
@@ -28,7 +37,7 @@ int main(int argc, char *argv[])
     shmid = shmget(key, 1024, 0666 | IPC_CREAT);
     if (shmid == -1)
     {
-        perror("shmget");
+        perror("Shared memory error: shmget");
         return 1;
     }
 
@@ -36,14 +45,14 @@ int main(int argc, char *argv[])
     shared_memory = shmat(shmid, NULL, 0);
     if (shared_memory == (void *)-1)
     {
-        perror("shmat");
+        perror("Shared memory error: shmat");
         return 1;
     }
     // Allocate dynamic memory for the message
     strings = (char *)malloc(SHM_SIZE);
     if (!strings)
     {
-        perror("malloc");
+        perror("Memory allocation error: malloc");
         exit(1);
     }
 
@@ -73,7 +82,7 @@ int main(int argc, char *argv[])
     
     // Signal the server that a message is available
     pthread_cond_signal(&full);
-    printf("Sent message: %s\n", strings);
+    printf("Message successfully sent: %s\n", strings);
     pthread_mutex_unlock(&mutex);
 
     /*
