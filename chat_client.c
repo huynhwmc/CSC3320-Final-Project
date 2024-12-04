@@ -83,6 +83,27 @@ int main(int argc, char *argv[])
     // Signal the server that a message is available
     pthread_cond_signal(&full);
     printf("Message successfully sent: %s\n", strings);
+    
+    
+    //ciara work:
+    snprintf(strings, SHM_SIZE, "Client PID: %d - %s", getpid(), strings);
+    strncpy((char *)shared_memory, strings, SHM_SIZE);
+
+    pthread_cond_signal(&full);
+    printf("Sent message: %s\n", strings);
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 5; // Timeout in 5 seconds
+
+    int ret = pthread_cond_timedwait(&empty, &mutex, &ts);
+    if (ret == 0) {
+        printf("Server response: %s\n", (char *)shared_memory);
+    } else {
+        printf("No response from server within timeout period.\n");
+    }
+    
+    
     pthread_mutex_unlock(&mutex);
 
     /*
