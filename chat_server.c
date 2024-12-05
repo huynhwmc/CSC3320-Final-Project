@@ -9,14 +9,14 @@
 #include <stdbool.h> // for boolean values
 
 #define SHM_SIZE 1024
-#define RESPONSE_TIMEOUT 5 //timeout in seconds for server
+#define RESPONSE_TIMEOUT 20 // timeout in seconds for server
 
 pthread_mutex_t mutex;
 pthread_cond_t full;
 pthread_cond_t empty;
-int shmid;
+int shmid; // Shared memory's ID
 void *shared_memory;
-bool has_new_message = false;
+bool has_new_message = false; // Indicates new message in shared memory
 
 /* Add custom data to shared memory. */
 typedef struct
@@ -26,14 +26,12 @@ typedef struct
     char message[SHM_SIZE - 12]; // Message content
 } shared_data_t;
 
-int shmid; // Shared memory's ID
-void *shared_memory;
-//bool has_new_message = false; // Indicates new message in shared memory
-
 /* Access shared memory and read a message */
-void *receive_msg(void *threadarg) {
+void *receive_msg(void *threadarg)
+{
     char server_response[SHM_SIZE];
-    while (true) {
+    while (true)
+    {
         pthread_mutex_lock(&mutex);
 
         // Wait until there is a new message
@@ -41,32 +39,37 @@ void *receive_msg(void *threadarg) {
         {
             pthread_cond_wait(&full, &mutex);
         }
-        char *msg = (char *)shared_memory; // Read from shared memory
- 
-        printf("New message from client: %s\n", msg);
-        printf("Reply to client? (y/n): ");
-        char choice;
-        fgets(server_response, sizeof(server_response), stdin);
-        choice = server_response[0];
+        shared_data_t *sh_data = (shared_data_t *)shared_memory; // Read from shared memory
 
-        if (choice == 'y' || choice == 'Y') {
-            snprintf(server_response, SHM_SIZE, "Server Response: Hello, %s", msg);
-            strncpy((char *)shared_memory, server_response, SHM_SIZE);
-            printf("Sent response: %s\n", server_response);
+        // Check if the message flag indicates it's a client message
+        if (sh_data->flag == 1)
+        {
+            printf("New message from client (PID: %d): %s\n", sh_data->client_pid, sh_data->message);
+            printf("Reply to client? (y/n): ");
+            char choice;
+            fgets(server_response, sizeof(server_response), stdin);
+            choice = server_response[0];
+
+            if (choice == 'y' || choice == 'Y')
+            {
+                // Prepare server response
+                snprintf(server_response, SHM_SIZE, "Server Response: Hello, process %d", sh_data->client_pid);
+                // Write server response to shared memory
+                strncpy(sh_data->message, server_response, SHM_SIZE - 12); // Store response
+                printf("Sent response: %s\n", server_response);
+                pthread_cond_signal(&empty); // Notify the client that the server has responded
+            }
+            else
+            {
+                printf("No response sent.\n");
+            }
+            // Clear the shared memory
+            memset(sh_data->message, 0, SHM_SIZE - 12);
+            sh_data->flag = 0; // Mark shared memory as empty
+
+            // Signal that the shared memory is now empty
             pthread_cond_signal(&empty);
-        } else {
-            printf("No response sent.\n");
         }
-        // Clear the shared memory
-        memset(shared_memory, 0, SHM_SIZE);
-        has_new_message = false;
-
-        // Write acknowledgment back to shared memory
-        // strcpy((char *)shared_memory, "Message received by server!");
-
-        // Signal that the shared memory is now empty
-        pthread_cond_signal(&empty);
-        
         pthread_mutex_unlock(&mutex);
     }
     pthread_exit(NULL);
@@ -79,8 +82,10 @@ void *monitor_memory(void *threadarg)
     {
         pthread_mutex_lock(&mutex);
 
+        shared_data_t *sh_data = (shared_data_t *)shared_memory;
+
         // Check if shared memory has new messages
-        if (strlen((char *)shared_memory) > 0 && !has_new_message)
+        if (sh_data->flag == 1 && !has_new_message)
         {
             has_new_message = true;
             pthread_cond_signal(&full); // Notify the receive_msg thread
@@ -114,7 +119,7 @@ int main(int argc, char *argv[])
         perror("Shared memory error: shmget");
         return 1;
     }
-    
+
     shared_memory = shmat(shmid, NULL, 0);
     if (shared_memory == (void *)-1)
     {

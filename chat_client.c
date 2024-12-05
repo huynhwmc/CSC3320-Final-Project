@@ -9,7 +9,7 @@
 
 #define SHM_SIZE 1024
 #define MAX_LIMIT 200 // Maximum buffer/character limit for messages
-pthread_mutex_t mutex;  
+pthread_mutex_t mutex;
 pthread_cond_t full;
 pthread_cond_t empty;
 
@@ -25,7 +25,7 @@ typedef struct
 int main(int argc, char *argv[])
 {
     char *strings = NULL; // Holds the message in dynamic memory
-    int shmid; // Shared memory's ID
+    int shmid;            // Shared memory's ID
     void *shared_memory;
 
     // Define mutual exclusion and conditions
@@ -42,13 +42,9 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Create shared memory
-    shared_memory = shmat(shmid, NULL, 0);
-    if (shared_memory == (void *)-1)
-    {
-        perror("Shared memory error: shmat");
-        return 1;
-    }
+    // Create shared memory and cast to the shared_data_t type
+    shared_data_t *sh_data = (shared_data_t *)shared_memory;
+
     // Allocate dynamic memory for the message
     strings = (char *)malloc(SHM_SIZE);
     if (!strings)
@@ -68,54 +64,40 @@ int main(int argc, char *argv[])
         free(strings);
         exit(1);
     }
-
+    
     // Connect to the chat server using shared memory
     pthread_mutex_lock(&mutex); // Use mutexes to ensure no other process is accessing or updating that memory
-    
     // Wait if shared memory is not empty
-    while (strlen((char *)shared_memory) != 0)
+    while (sh_data->flag != 0)
     {
         pthread_cond_wait(&empty, &mutex);
     }
-    
+
     // Write to shared memory
-    strncpy((char *)shared_memory, strings, SHM_SIZE);
+    sh_data->flag = 1;              // Indicates that the message is from the client
+    sh_data->client_pid = getpid(); // Store the PID
     
+    strncpy(sh_data->message, strings, SHM_SIZE - sizeof(int) - sizeof(pid_t));
+
     // Signal the server that a message is available
     pthread_cond_signal(&full);
     printf("Message successfully sent: %s\n", strings);
-    
-    
-    //ciara work:
-    snprintf(strings, SHM_SIZE, "Client PID: %d - %s", getpid(), strings);
-    strncpy((char *)shared_memory, strings, SHM_SIZE);
-
-    pthread_cond_signal(&full);
-    printf("Sent message: %s\n", strings);
 
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += 5; // Timeout in 5 seconds
+    ts.tv_sec += 20; // Timeout in 20 seconds
 
     int ret = pthread_cond_timedwait(&empty, &mutex, &ts);
-    if (ret == 0) {
+    if (ret == 0)
+    {
         printf("Server response: %s\n", (char *)shared_memory);
-    } else {
+    }
+    else
+    {
         printf("No response from server within timeout period.\n");
     }
-    
-    
-    pthread_mutex_unlock(&mutex);
 
-    /*
-    // Wait for the server's acknowledgment
-    pthread_mutex_lock(&mutex);
-    pthread_cond_wait(&empty, &mutex);
-
-    // Read acknowledgment
-    printf("Server acknowledgment: %s\n", (char *)shared_memory);
     pthread_mutex_unlock(&mutex);
-    */
 
     // Free allocated memory
     free(strings);
