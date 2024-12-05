@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
     pthread_cond_init(&empty, NULL);
 
     // Generate unique key
-    key_t key = ftok("shmfile", 65);
+    key_t key = ftok("shmmessage", 65);
 
     // Create shared memory
     shmid = shmget(key, 1024, 0666 | IPC_CREAT);

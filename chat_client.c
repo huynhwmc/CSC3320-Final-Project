@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
     initialize_sync_primitives();
 
     // generate unique key and create shared memory
-    key_t key = ftok("chat_server.c", 65);
+    key_t key = ftok("shmmessage", 65);
     shmid = create_shared_memory(key);
 
     // attach to a shared memory
@@ -69,7 +69,7 @@ void initialize_sync_primitives()
 
 int create_shared_memory(key_t key)
 {
-    int shmid = shmget(key, sizeof(SharedMemory), 0666 | IPC_CREAT);
+    int shmid = shmget(key, 1024, 0666 | IPC_CREAT);
     if (shmid == -1)
     {
         perror("shmget");
@@ -120,14 +120,15 @@ void write_to_shared_memory(void *shared_memory, char *buffer)
     SharedMemory *shm = (SharedMemory *)shared_memory;
 
     // wait if shared memory is not empty
-    while (strlen(shm->message) != 0)
+    while (strlen((char *)shared_memory) != 0)
     {
         pthread_cond_wait(&empty, &mutex);
     }
 
     // write message to shared memory
-    shm->client_pid = getpid(); 
-    strncpy(shm->message, buffer, SHM_SIZE - 1);
+    shm->client_pid = getpid();
+    // strncpy(shm->message, buffer, SHM_SIZE - 1);
+    strncpy((char *)shared_memory, buffer, SHM_SIZE);
 
     // signal to the server that a message is available
     pthread_cond_signal(&full);
