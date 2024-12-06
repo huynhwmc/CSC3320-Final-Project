@@ -43,6 +43,12 @@ int main(int argc, char *argv[])
     }
 
     // Create shared memory and cast to the shared_data_t type
+    shared_memory = shmat(shmid, NULL, 0);
+    if (shared_memory == (void *)-1)
+    {
+        perror("Shared memory error: shmat");
+        return 1;
+    }
     shared_data_t *sh_data = (shared_data_t *)shared_memory;
 
     // Allocate dynamic memory for the message
@@ -54,7 +60,7 @@ int main(int argc, char *argv[])
     }
 
     // User enters a message
-    printf("\nEnter a message: ");
+    printf("\nWelcome. Your PID is %d. Enter a message: ", getpid());
     fgets(strings, SHM_SIZE, stdin);
     strings[strcspn(strings, "\n")] = '\0'; // Remove newline
     // Check that the message is not longer than the maximum allowed character limit
