@@ -3,76 +3,86 @@
 #include <sys/shm.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/types.h>
 #include <pthread.h>
 #include <unistd.h>
 
 #define SHM_SIZE 1024
-#define MAX_LIMIT 200 // Maximum buffer/character limit for messages
-pthread_mutex_t mutex;
-pthread_cond_t full;
-pthread_cond_t empty;
+#define RESPONSE_TIMEOUT 20 // timeout in seconds for server
 
-typedef struct {
-    pid_t client_pid;         // Client Process ID
-    char message[SHM_SIZE];   // Message content
-} SharedMemory;
+/* Add custom data to shared memory. */
+typedef struct
+{
+    int flag;                    // 0 = empty, 1 = client message, 2 = server response
+    pid_t client_pid;            // Client's process ID
+    char message[SHM_SIZE - 12]; // Message content
+} shared_data_t;
 
-// function declarations
-void initialize_sync_primitives();
+// Function declarations
+void allocate_message_buffer(char **buffer);
 int create_shared_memory(key_t key);
 void *attach_shared_memory(int shmid);
-void allocate_message_buffer(char **buffer);
-void get_message(char message_buffer[]);
-void write_to_shared_memory(void *shared_memory, char *buffer);
-void cleanup(char *buffer, void *shared_memory, int shmid);
-
-
+void write_to_shared_memory(shared_data_t *sh_data, const char *message);
+void wait_for_response(shared_data_t *sh_data, void *shared_memory);
+void cleanup(char *buffer, void *shared_memory);
 
 /* Chat client */
 int main(int argc, char *argv[])
 {
-    char *message_buffer = NULL;
-    int shmid;
+    char *message_buffer = NULL; // Holds the message in dynamic memory
+    int shmid;            // Shared memory's ID
     void *shared_memory;
 
-    // initialize synchronization primitives
-    initialize_sync_primitives();
-
-    // generate unique key and create shared memory
-    key_t key = ftok("shmmessage", 65);
+    // Generate unique key and create shared memory
+    key_t key = ftok("shmfile", 65);
     shmid = create_shared_memory(key);
 
-    // attach to a shared memory
+    // Attach to shared memory
     shared_memory = attach_shared_memory(shmid);
+    shared_data_t *sh_data = (shared_data_t *)shared_memory;
 
-    // allocate dynamic memory for the message
+    // Allocate dynamic memory for the message
     allocate_message_buffer(&message_buffer);
 
-    // get user message
-    get_message(message_buffer);
+    // User enters a message
+    printf("\nWelcome. Your PID is %d. Enter a message: ", getpid());
+    fgets(message_buffer, SHM_SIZE, stdin);
+    message_buffer[strcspn(message_buffer, "\n")] = '\0'; // Remove newline
+    // Check that the message is not longer than the maximum allowed character limit
+    if (strlen(message_buffer) >= SHM_SIZE)
+    {
+        fprintf(stderr, "The message is too long. Maximum allowed size is %d characters.\n", SHM_SIZE - 1);
+        free(message_buffer);
+        exit(1);
+    }
 
-    // write message to shared memory
-    write_to_shared_memory(shared_memory, message_buffer);
+    // Write to shared memory
+    write_to_shared_memory(sh_data, message_buffer);
 
-    // clean up
-    cleanup(message_buffer, shared_memory, shmid);
+    // Wait for server response
+    wait_for_response(sh_data, shared_memory);
 
+    // Cleanup, free allocated memory and detach from shared memory
+    cleanup(message_buffer, shared_memory);
     return 0;
 }
 
-void initialize_sync_primitives()
+void allocate_message_buffer(char **buffer)
 {
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&full, NULL);
-    pthread_cond_init(&empty, NULL);
+    *buffer = (char *)malloc(SHM_SIZE);
+    if (!*buffer)
+    {
+        perror("Memory allocation error: malloc");
+        exit(1);
+    }
 }
 
 int create_shared_memory(key_t key)
 {
-    int shmid = shmget(key, 1024, 0666 | IPC_CREAT);
+    int shmid = shmget(key, SHM_SIZE, 0666 | IPC_CREAT);
     if (shmid == -1)
     {
-        perror("shmget");
+        perror("Shared memory error: shmget");
         exit(1);
     }
     return shmid;
@@ -83,71 +93,47 @@ void *attach_shared_memory(int shmid)
     void *shared_memory = shmat(shmid, NULL, 0);
     if (shared_memory == (void *)-1)
     {
-        perror("shmat");
+        perror("Shared memory error: shmat");
         exit(1);
     }
     return shared_memory;
 }
 
-void allocate_message_buffer(char **buffer)
+void write_to_shared_memory(shared_data_t *sh_data, const char *msg)
 {
-    *buffer = (char *)malloc(SHM_SIZE);
-    if (!*buffer)
+    // Write to shared memory
+    sh_data->flag = 1;              // Indicates that the message is from the client
+    sh_data->client_pid = getpid(); // Store the PID
+
+    strncpy(sh_data->message, msg, SHM_SIZE - sizeof(int) - sizeof(pid_t));
+    printf("Sending message: %s\n", msg);
+}
+
+void wait_for_response(shared_data_t *sh_data, void *shared_memory)
+{
+    // Wait for the server response
+    time_t start_time = time(NULL);
+    while (time(NULL) - start_time < RESPONSE_TIMEOUT)
     {
-        perror("malloc");
-        exit(1);
+        // Consistently check shared memory for updates by the server
+        shared_data_t *sh_data = (shared_data_t *)shared_memory;
+        if (sh_data->flag == 2)
+        {
+            printf("Server response: %s\n", sh_data->message);
+            sh_data->flag = 0; // Mark shared memory as empty
+            break;
+        }
+        usleep(100000); // Sleep for 100ms to avoid busy-waiting
+    }
+
+    if (sh_data->flag != 0)
+    { // If no response is received within the timeout period
+        printf("No response from server within timeout period.\n");
     }
 }
 
-void get_message(char message_buffer[])
+void cleanup(char *buffer, void *shared_memory)
 {
-    printf("Enter message: ");
-    fgets(message_buffer, MAX_LIMIT, stdin);
-    message_buffer[strcspn(message_buffer, "\n")] = 0; // remove newline
-
-    // check that the message is not longer than the maximum allowed character limit 
-    if (strlen(message_buffer)>= MAX_LIMIT)
-    {
-        printf("Message is too long. Maximum character limit is %d\n", MAX_LIMIT - 1);
-        exit(1);
-    }
-}
-
-void write_to_shared_memory(void *shared_memory, char *buffer)
-{
-    pthread_mutex_lock(&mutex);
-
-    SharedMemory *shm = (SharedMemory *)shared_memory;
-
-    // wait if shared memory is not empty
-    while (strlen((char *)shared_memory) != 0)
-    {
-        pthread_cond_wait(&empty, &mutex);
-    }
-
-    // write message to shared memory
-    shm->client_pid = getpid();
-    // strncpy(shm->message, buffer, SHM_SIZE - 1);
-    strncpy((char *)shared_memory, buffer, SHM_SIZE);
-
-    // signal to the server that a message is available
-    pthread_cond_signal(&full);
-    printf("Message sent to server: %s\n", buffer);
-
-    pthread_mutex_unlock(&mutex);
-}
-
-void cleanup(char *buffer, void *shared_memory, int shmid)
-{
-    
-    // free allocated memory
     free(buffer);
-
-    //detach from shared memory
     shmdt(shared_memory);
-
-    //destory synchronization 
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&full);
-    pthread_cond_destroy(&empty);
 }
