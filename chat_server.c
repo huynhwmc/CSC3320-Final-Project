@@ -69,7 +69,7 @@ void *receive_msg(void *threadarg)
 
             if (res == 0 && strlen(shared_input) > 0) {
                 // Prepare server response
-                snprintf(sh_data->message, SHM_SIZE - 12, "Server Response: %s", shared_input);
+                snprintf(sh_data->message, SHM_SIZE - 12, "%s", shared_input);
                 sh_data->flag = 2; // Mark as server response
                 printf("Sent response: %s\n", shared_input);
                 memset(shared_input, 0, sizeof(shared_input));
