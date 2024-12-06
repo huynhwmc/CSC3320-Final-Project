@@ -16,7 +16,10 @@ pthread_cond_t full;
 pthread_cond_t empty;
 int shmid; // Shared memory's ID
 void *shared_memory;
+char shared_input[SHM_SIZE];  // Buffer for user input
+bool server_running = true;
 bool has_new_message = false; // Indicates new message in shared memory
+bool waiting_for_response = false; // Indicates the server is waiting for a response
 
 /* Add custom data to shared memory. */
 typedef struct
@@ -29,15 +32,19 @@ typedef struct
 /* Access shared memory and read a message */
 void *receive_msg(void *threadarg)
 {
-    char server_response[SHM_SIZE];
-    while (true)
+    while (server_running)
     {
         pthread_mutex_lock(&mutex);
 
         // Wait until there is a new message
-        while (!has_new_message)
+        while (server_running && !has_new_message)
         {
             pthread_cond_wait(&full, &mutex);
+        }
+        if (!server_running)
+        {
+            pthread_mutex_unlock(&mutex);
+            break;
         }
         shared_data_t *sh_data = (shared_data_t *)shared_memory; // Read from shared memory
 
@@ -45,28 +52,40 @@ void *receive_msg(void *threadarg)
         if (sh_data->flag == 1)
         {
             printf("New message from client (PID: %d): %s\n", sh_data->client_pid, sh_data->message);
-            printf("Reply to client? (y/n): ");
-            char choice;
-            fgets(server_response, sizeof(server_response), stdin);
-            choice = server_response[0];
+            fflush(stdout);
+            // Unlock the mutex to allow the main thread to read input
+            pthread_mutex_unlock(&mutex);
+            printf("\nEnter a response for PID %d: ", sh_data->client_pid);
+            fflush(stdout);
+            waiting_for_response = true;
+            // Wait for a response or timeout
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += RESPONSE_TIMEOUT;
 
-            if (choice == 'y' || choice == 'Y')
-            {
+            pthread_mutex_lock(&mutex);
+
+            int res = pthread_cond_timedwait(&empty, &mutex, &ts);
+
+            if (res == 0 && strlen(shared_input) > 0) {
                 // Prepare server response
-                snprintf(server_response, SHM_SIZE, "Server Response: Hello, process %d", sh_data->client_pid);
-                // Write server response to shared memory
-                strncpy(sh_data->message, server_response, SHM_SIZE - 12); // Store response
-                printf("Sent response: %s\n", server_response);
-                pthread_cond_signal(&empty); // Notify the client that the server has responded
+                snprintf(sh_data->message, SHM_SIZE - 12, "Server Response: %s", shared_input);
+                sh_data->flag = 2; // Mark as server response
+                printf("Sent response: %s\n", shared_input);
+                memset(shared_input, 0, sizeof(shared_input));
             }
-            else
-            {
+            else {
                 printf("No response sent.\n");
             }
-            // Clear the shared memory
-            memset(sh_data->message, 0, SHM_SIZE - 12);
-            sh_data->flag = 0; // Mark shared memory as empty
 
+            pthread_cond_signal(&full); // Notify the client that a response is ready
+
+            has_new_message = false;
+            waiting_for_response = false;
+            usleep(100000);
+            sh_data->flag = 0; // Mark shared memory as empty
+            memset(sh_data->message, 0, SHM_SIZE - 12);
+            
             // Signal that the shared memory is now empty
             pthread_cond_signal(&empty);
         }
@@ -78,14 +97,13 @@ void *receive_msg(void *threadarg)
 /* Monitor for new messages in shared memory */
 void *monitor_memory(void *threadarg)
 {
-    while (true)
+    while (server_running)
     {
         pthread_mutex_lock(&mutex);
 
         shared_data_t *sh_data = (shared_data_t *)shared_memory;
-
         // Check if shared memory has new messages
-        if (sh_data->flag == 1 && !has_new_message)
+        if (server_running && sh_data->flag == 1 && !has_new_message)
         {
             has_new_message = true;
             pthread_cond_signal(&full); // Notify the receive_msg thread
@@ -135,7 +153,7 @@ int main(int argc, char *argv[])
     pthread_create(&server_thread, NULL, receive_msg, NULL);
     pthread_create(&monitor_thread, NULL, monitor_memory, NULL);
 
-    char input[20];
+    char input[SHM_SIZE];
     const char exit_command[] = ".exit";
     // Server CLI
     printf("\nNow waiting for messages.");
@@ -151,8 +169,24 @@ int main(int argc, char *argv[])
         if (strcmp(input, exit_command) == 0)
         {
             printf("\nExiting...\n");
-            break; // Terminate from the infinite loop and execute the code below
+            pthread_mutex_lock(&mutex);
+            server_running = false;
+            pthread_cond_broadcast(&full); // Wake up all threads
+            pthread_cond_broadcast(&empty);
+            pthread_mutex_unlock(&mutex);
+            break; // Terminate from the infinite loop and execute cleanup
         }
+
+        pthread_mutex_lock(&mutex);
+
+        if (waiting_for_response)
+        {
+            // Copy input to shared buffer for the receive_msg thread
+            strncpy(shared_input, input, sizeof(shared_input) - 1);
+            pthread_cond_signal(&empty); // Notify the receive_msg thread
+        }
+
+        pthread_mutex_unlock(&mutex);
     }
 
     // Clean up threads, shared memory, and mutex
