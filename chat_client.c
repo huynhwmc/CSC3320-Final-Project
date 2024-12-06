@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
     void *shared_memory;
 
     // Generate unique key and create shared memory
-    key_t key = ftok("shmfile", 65);
+    key_t key = ftok("shmmessage", 65);
     shmid = create_shared_memory(key);
 
     // Attach to shared memory
