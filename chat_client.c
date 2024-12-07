@@ -4,6 +4,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <signal.h>
 
 #define SHM_SIZE 1024
 #define RESPONSE_TIMEOUT 20 // timeout in seconds for server
@@ -16,6 +17,10 @@ typedef struct
     char message[SHM_SIZE - 12]; // Message content
 } shared_data_t;
 
+char *message_buffer = NULL; // Holds the message in dynamic memory
+int shmid;                   // Shared memory's ID
+void *shared_memory;
+
 // Function declarations
 void allocate_message_buffer(char **buffer);
 int create_shared_memory(key_t key);
@@ -23,13 +28,13 @@ void *attach_shared_memory(int shmid);
 void write_to_shared_memory(shared_data_t *sh_data, const char *message);
 void wait_for_response(shared_data_t *sh_data, void *shared_memory);
 void cleanup(char *buffer, void *shared_memory);
+void signal_handler(int signum);
 
 /* Chat client */
 int main(int argc, char *argv[])
 {
-    char *message_buffer = NULL; // Holds the message in dynamic memory
-    int shmid;            // Shared memory's ID
-    void *shared_memory;
+    // Register the signal handler for Ctrl-C, being sure to free allocated memory upon terminating
+    signal(SIGINT, signal_handler);
 
     // Generate unique key and create shared memory
     key_t key = ftok("shmmessage", 65);
@@ -50,7 +55,7 @@ int main(int argc, char *argv[])
     if (strlen(message_buffer) >= SHM_SIZE)
     {
         fprintf(stderr, "The message is too long. Maximum allowed size is %d characters.\n", SHM_SIZE - 1);
-        free(message_buffer);
+        cleanup(message_buffer, shared_memory);
         exit(1);
     }
 
@@ -141,4 +146,10 @@ void cleanup(char *buffer, void *shared_memory)
 {
     free(buffer);
     shmdt(shared_memory);
+}
+
+/* Signal handler for SIGINT (Ctrl-C) */
+void signal_handler(int signum)
+{
+    cleanup(message_buffer, shared_memory);
 }

@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <sys/shm.h>
+#include <signal.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h> // for boolean values
 #include <time.h>
+#include <sys/shm.h>
 
 #define SHM_SIZE 1024
 #define RESPONSE_TIMEOUT 20 // timeout in seconds for server
@@ -13,6 +14,7 @@
 pthread_mutex_t mutex;
 pthread_cond_t full;
 pthread_cond_t empty;
+pthread_t server_thread, monitor_thread;
 int shmid; // Shared memory's ID
 void *shared_memory;
 char shared_input[SHM_SIZE];  // Buffer for user input
@@ -34,6 +36,7 @@ void *monitor_memory(void *threadarg);
 void log_message(const char *filename, const char *message, int type, pid_t client_pid);
 void log_startup(const char *filename);
 void view_log_file(const char *filename);
+void cleanup();
 
 /* Access shared memory and read a message */
 void *receive_msg(void *threadarg)
@@ -187,6 +190,9 @@ int main(int argc, char *argv[])
 {
     printf("\nWelcome to the OS Chat Server");
 
+    // Register signal handler for Ctrl-C
+    signal(SIGINT, cleanup);
+
     // Create the mutex
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&full, NULL);
@@ -214,7 +220,6 @@ int main(int argc, char *argv[])
     memset(shared_memory, 0, SHM_SIZE);
 
     // Create threads waiting for clients to connect
-    pthread_t server_thread, monitor_thread;
     pthread_create(&server_thread, NULL, receive_msg, NULL);
     pthread_create(&monitor_thread, NULL, monitor_memory, NULL);
 
@@ -237,7 +242,6 @@ int main(int argc, char *argv[])
         // Compare input with ".exit"
         if (strcmp(input, exit_command) == 0)
         {
-            printf("\nExiting...\n");
             pthread_mutex_lock(&mutex);
             server_running = false;
             pthread_cond_broadcast(&full); // Wake up all threads
@@ -263,15 +267,28 @@ int main(int argc, char *argv[])
 
         pthread_mutex_unlock(&mutex);
     }
-
     // Clean up threads, shared memory, and mutex
+    cleanup();
+
+    return 0;
+}
+
+/* Clean up threads, shared memory, and mutex */
+void cleanup()
+{
     pthread_cancel(server_thread);
     pthread_cancel(monitor_thread);
     pthread_join(server_thread, NULL);
     pthread_join(monitor_thread, NULL);
     shmctl(shmid, IPC_RMID, NULL);
+    if (shmid > 0)
+    {
+        shmctl(shmid, IPC_RMID, NULL);
+    }
     pthread_mutex_destroy(&mutex);
     pthread_cond_destroy(&full);
     pthread_cond_destroy(&empty);
-    return 0;
+
+    printf("\nExiting...\n");
+    exit(0);
 }
