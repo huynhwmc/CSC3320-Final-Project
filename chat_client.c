@@ -120,6 +120,7 @@ void wait_for_response(shared_data_t *sh_data, void *shared_memory)
         if (sh_data->flag == 2)
         {
             printf("Server response: %s\n", sh_data->message);
+            log_message("chat_log.txt", sh_data->message);
             sh_data->flag = 0; // Mark shared memory as empty
             break;
         }
@@ -129,6 +130,16 @@ void wait_for_response(shared_data_t *sh_data, void *shared_memory)
     if (sh_data->flag != 0)
     { // If no response is received within the timeout period
         printf("No response from server within timeout period.\n");
+    }
+}
+
+void log_message(const char *filename, const char *message){
+    FILE *file = fopen(filename, "a");
+    if (file) {
+        fprint(file, "Client: %s\n", message);
+        fclose(file);
+    } else {
+        perror("File open error");
     }
 }
 

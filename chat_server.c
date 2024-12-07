@@ -52,6 +52,7 @@ void *receive_msg(void *threadarg)
         if (sh_data->flag == 1)
         {
             printf("New message from client (PID: %d): %s\n", sh_data->client_pid, sh_data->message);
+            log_message("chat_log.txt", sh_data->message, sh_data->client_pid);
             fflush(stdout);
             // Unlock the mutex to allow the main thread to read input
             pthread_mutex_unlock(&mutex);
@@ -72,6 +73,7 @@ void *receive_msg(void *threadarg)
                 snprintf(sh_data->message, SHM_SIZE - 12, "%s", shared_input);
                 sh_data->flag = 2; // Mark as server response
                 printf("Sent response: %s\n", shared_input);
+                log_message("chat_log.txt", shared_input, sh_data->client_pid);
                 memset(shared_input, 0, sizeof(shared_input));
             }
             else {
@@ -115,6 +117,16 @@ void *monitor_memory(void *threadarg)
     }
 
     pthread_exit(NULL);
+}
+
+void log_message(const char *filename, const char *message, pid_t client_pid){
+    FILE *file = fopen(filename, "a");
+    if (file){
+        fprintf(file, "Server recieved from PID %d: %s\n", client_pid, message);
+        fclose(file);
+    } else {
+        perror("File open error");
+    }
 }
 
 /* Chat system server */
