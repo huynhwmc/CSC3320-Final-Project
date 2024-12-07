@@ -3,10 +3,9 @@
 #include <pthread.h>
 #include <sys/shm.h>
 #include <string.h>
-#include <sys/wait.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include <stdbool.h> // for boolean values
+#include <time.h>
 
 #define SHM_SIZE 1024
 #define RESPONSE_TIMEOUT 20 // timeout in seconds for server
@@ -29,7 +28,12 @@ typedef struct
     char message[SHM_SIZE - 12]; // Message content
 } shared_data_t;
 
-void log_message(const char *filename, const char *message, pid_t client_pid);
+// Function declarations
+void *receive_msg(void *threadarg);
+void *monitor_memory(void *threadarg);
+void log_message(const char *filename, const char *message, int type, pid_t client_pid);
+void log_startup(const char *filename);
+void view_log_file(const char *filename);
 
 /* Access shared memory and read a message */
 void *receive_msg(void *threadarg)
@@ -53,12 +57,12 @@ void *receive_msg(void *threadarg)
         // Check if the message flag indicates it's a client message
         if (sh_data->flag == 1)
         {
-            printf("New message from client (PID: %d): %s\n", sh_data->client_pid, sh_data->message);
-            log_message("chat_log.txt", sh_data->message, sh_data->client_pid);
+            printf("\nNew message from client (PID: %d): %s\n", sh_data->client_pid, sh_data->message);
+            log_message("chat_log.txt", sh_data->message, sh_data->flag, sh_data->client_pid);
             fflush(stdout);
             // Unlock the mutex to allow the main thread to read input
             pthread_mutex_unlock(&mutex);
-            printf("\nEnter a response for PID %d: ", sh_data->client_pid);
+            printf("Enter a response for PID %d: ", sh_data->client_pid);
             fflush(stdout);
             waiting_for_response = true;
             // Wait for a response or timeout
@@ -75,7 +79,7 @@ void *receive_msg(void *threadarg)
                 snprintf(sh_data->message, SHM_SIZE - 12, "%s", shared_input);
                 sh_data->flag = 2; // Mark as server response
                 printf("Sent response: %s\n", shared_input);
-                log_message("chat_log.txt", shared_input, sh_data->client_pid);
+                log_message("chat_log.txt", shared_input, 2, sh_data->client_pid);
                 memset(shared_input, 0, sizeof(shared_input));
             }
             else {
@@ -121,12 +125,43 @@ void *monitor_memory(void *threadarg)
     pthread_exit(NULL);
 }
 
-void log_message(const char *filename, const char *message, pid_t client_pid){
+/* Append a message to the log text file. */
+void log_message(const char *filename, const char *message, int type, pid_t client_pid){
     FILE *file = fopen(filename, "a");
     if (file){
-        fprintf(file, "Server recieved from PID %d: %s\n", client_pid, message);
+        if (type == 1) { //
+            fprintf(file, "Server received from PID %d: %s\n", client_pid, message);
+        }
+        else if (type == 2) {
+            fprintf(file, "Server sent to PID %d: %s\n", client_pid, message);
+        }
+        else {
+            fprintf(file, "%s\n", message);
+        }
         fclose(file);
     } else {
+        perror("File open error");
+    }
+}
+
+/* Create a log file for storing all messages received for the session. */
+void log_startup(const char *filename)
+{
+    FILE *file = fopen(filename, "w"); // write mode, delete and recreate
+    if (file)
+    {
+        // Get current date and time
+        time_t now = time(NULL);
+        struct tm *tm_info = localtime(&now);
+        char date[26];
+        strftime(date, 26, "%Y-%m-%d %H:%M:%S", tm_info);
+
+        // Log the server start message
+        fprintf(file, "Server started at %s\n", date);
+        fclose(file);
+    }
+    else
+    {
         perror("File open error");
     }
 }
@@ -145,6 +180,7 @@ void view_log_file(const char *filename) {
     }
     fclose(file); // Close the file after reading
 }
+
 
 /* Chat system server */
 int main(int argc, char *argv[])
@@ -181,6 +217,9 @@ int main(int argc, char *argv[])
     pthread_t server_thread, monitor_thread;
     pthread_create(&server_thread, NULL, receive_msg, NULL);
     pthread_create(&monitor_thread, NULL, monitor_memory, NULL);
+
+    // Log server startup
+    log_startup("chat_log.txt");
 
     char input[SHM_SIZE];
     const char exit_command[] = ".exit";

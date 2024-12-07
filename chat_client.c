@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <sys/shm.h>
 #include <string.h>
-#include <sys/wait.h>
-#include <sys/types.h>
 #include <pthread.h>
 #include <unistd.h>
 
@@ -67,6 +65,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+/* Allocate dynamic memory for the given message */
 void allocate_message_buffer(char **buffer)
 {
     *buffer = (char *)malloc(SHM_SIZE);
@@ -75,8 +74,10 @@ void allocate_message_buffer(char **buffer)
         perror("Memory allocation error: malloc");
         exit(1);
     }
+    memset(*buffer, 0, SHM_SIZE);
 }
 
+/* Create shared memory that will be used by the chat server. */
 int create_shared_memory(key_t key)
 {
     int shmid = shmget(key, SHM_SIZE, 0666 | IPC_CREAT);
@@ -88,6 +89,7 @@ int create_shared_memory(key_t key)
     return shmid;
 }
 
+/* Attach this process to shared memory. */
 void *attach_shared_memory(int shmid)
 {
     void *shared_memory = shmat(shmid, NULL, 0);
@@ -99,6 +101,7 @@ void *attach_shared_memory(int shmid)
     return shared_memory;
 }
 
+/* Write a message to shared memory. */
 void write_to_shared_memory(shared_data_t *sh_data, const char *msg)
 {
     // Write to shared memory
@@ -109,6 +112,7 @@ void write_to_shared_memory(shared_data_t *sh_data, const char *msg)
     printf("Sending message: %s\n", msg);
 }
 
+/* Wait for a server response. */
 void wait_for_response(shared_data_t *sh_data, void *shared_memory)
 {
     // Wait for the server response
@@ -120,7 +124,6 @@ void wait_for_response(shared_data_t *sh_data, void *shared_memory)
         if (sh_data->flag == 2)
         {
             printf("Server response: %s\n", sh_data->message);
-            log_message("chat_log.txt", sh_data->message);
             sh_data->flag = 0; // Mark shared memory as empty
             break;
         }
@@ -133,16 +136,7 @@ void wait_for_response(shared_data_t *sh_data, void *shared_memory)
     }
 }
 
-void log_message(const char *filename, const char *message){
-    FILE *file = fopen(filename, "a");
-    if (file) {
-        fprint(file, "Client: %s\n", message);
-        fclose(file);
-    } else {
-        perror("File open error");
-    }
-}
-
+/* Free dynamic memory and detach from shared memory. */
 void cleanup(char *buffer, void *shared_memory)
 {
     free(buffer);
