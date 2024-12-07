@@ -146,6 +146,7 @@ void cleanup(char *buffer, void *shared_memory)
 {
     free(buffer);
     shmdt(shared_memory);
+    exit(0);
 }
 
 /* Signal handler for SIGINT (Ctrl-C) */
