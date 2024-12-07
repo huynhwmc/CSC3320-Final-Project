@@ -29,6 +29,8 @@ typedef struct
     char message[SHM_SIZE - 12]; // Message content
 } shared_data_t;
 
+void log_message(const char *filename, const char *message, pid_t client_pid);
+
 /* Access shared memory and read a message */
 void *receive_msg(void *threadarg)
 {
@@ -129,6 +131,21 @@ void log_message(const char *filename, const char *message, pid_t client_pid){
     }
 }
 
+// Function to view the content of the log file
+void view_log_file(const char *filename) {
+    FILE *file = fopen(filename, "r"); // Open the file in read mode
+    if (!file) {
+        perror("Error opening file");
+        return;
+    }
+
+    char line[1024]; // Buffer to hold lines from the file
+    while (fgets(line, sizeof(line), file)) {
+        printf("%s", line); // Print each line
+    }
+    fclose(file); // Close the file after reading
+}
+
 /* Chat system server */
 int main(int argc, char *argv[])
 {
@@ -170,6 +187,7 @@ int main(int argc, char *argv[])
     // Server CLI
     printf("\nNow waiting for messages.");
     printf("\nType '.exit' to exit.\n");
+    printf("Type '.view' to view message log\n");
 
     while (true) // Waiting for the "exit" message
     {
@@ -188,6 +206,12 @@ int main(int argc, char *argv[])
             pthread_mutex_unlock(&mutex);
             break; // Terminate from the infinite loop and execute cleanup
         }
+
+        if (strcmp(input, ".view") == 0) {
+        printf("Viewing log file:\n");
+        view_log_file("chat_log.txt");
+        continue;
+    }
 
         pthread_mutex_lock(&mutex);
 
